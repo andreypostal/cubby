@@ -1,0 +1,44 @@
+env: prod
+
+# Holds main.db and indexes
+data_dir: data
+
+# Where backup archives are written
+backup_dir: backups
+
+# How many archives to retain (zero disables rotation)
+backup_keep: 5
+
+api:
+  host: 127.0.0.1
+  port: 8080
+
+  read_timeout: 10s
+  write_timeout: 60s
+  idle_timeout: 60s
+
+  # Set both to serve https
+  # tls:
+  #   cert_file: ""
+  #   key_file: ""
+
+db:
+  sqlite_params: "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+  max_open_conns: 4
+  max_idle_conns: 2
+  conn_max_lifetime: 1h
+
+jwt:
+  expires_in: 24h
+
+log:
+  level: info
+  format: auto
+
+indexer:
+  writer_pool_size: 5
+  reader_pool_size: 5
+  writer_idle_time: 5m
+  reader_idle_time: 10m
+  suggestion_limit: 5
+  suggest_timeout: 5s

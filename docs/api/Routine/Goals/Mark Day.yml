@@ -1,0 +1,35 @@
+info:
+  name: Mark Day
+  type: http
+  seq: 7
+
+http:
+  method: PATCH
+  url: "{{server}}/routines/{{routineID}}/days/2026-08-12"
+  body:
+    type: json
+    data: |-
+      {
+        "achieved": true
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.routine && data.routine.id;
+
+        if (id) {
+          bru.setVar("routineID", id);
+          console.log("routineID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

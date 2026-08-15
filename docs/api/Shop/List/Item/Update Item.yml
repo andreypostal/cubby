@@ -1,0 +1,22 @@
+info:
+  name: Update Item
+  type: http
+  seq: 2
+
+http:
+  method: PATCH
+  url: "{{server}}/shop/lists/{{listID}}/items/{{itemID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Whole milk",
+        "notes": "1L - Semi-skimmed if unavailable"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

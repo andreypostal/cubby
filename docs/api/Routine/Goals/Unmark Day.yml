@@ -1,0 +1,15 @@
+info:
+  name: Unmark Day
+  type: http
+  seq: 8
+
+http:
+  method: DELETE
+  url: "{{server}}/routines/{{routineID}}/days/2026-08-12"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

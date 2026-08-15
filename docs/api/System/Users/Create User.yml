@@ -1,0 +1,52 @@
+info:
+  name: Create User
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{server}}/users"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Ada",
+        "username": "ada",
+        "password": "s3cret-enough",
+        "is_system_admin": false
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Create User
+
+  Adds somebody who can sign in. They start with no cubbies of their own and
+  nothing shared with them.
+
+  ## Requires a system admin
+
+  ## Response
+
+  `201` with the created user:
+
+  ```json
+  { "id": 2, "name": "Ada", "username": "ada", "is_system_admin": false }
+  ```
+
+  `is_system_admin` decides whether they can reach this endpoint themselves, and
+  everything else under the system-admin scope.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `401` | No session |
+  | `403` | The user is not a system admin |
+  | `409` | The username is already taken |
+  | `422` | A field is missing, or the password is under 8 characters |

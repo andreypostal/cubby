@@ -1,0 +1,87 @@
+info:
+  name: List Backups
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{server}}/backups"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const name = data.backups && data.backups[0] && data.backups[0].name;
+
+        if (name) {
+          bru.setVar("backupName", name);
+          console.log("backupName successfully saved to var");
+        } else {
+          console.error("No backup archive found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # List Backups
+
+  What is sitting in the backup folder right now. This is the entry point of the
+  restore flow: pick a name here, then download, restore or delete it.
+
+  ## Requires a system admin
+
+  Every `/backup` and `/backups` endpoint is **system-admin scoped**, not
+  workspace scoped. A backup archive holds every workspace in the database, so
+  it is deliberately out of reach of an ordinary member. Promote a user with
+  `server setup promote-user -u <username>`.
+
+  ## How it works
+
+  The backup folder is read from disk on each request — there is no table of
+  backups to drift out of sync with the files. Anything that is not a recognised
+  archive name is skipped, so an unrelated file dropped in the folder is simply
+  invisible rather than an error.
+
+  Results are sorted **newest first**. Names are timestamped and sort
+  lexicographically, so that ordering comes for free.
+
+  ## Response
+
+  ```json
+  {
+    "backups": [
+      {
+        "name": "cubby-backup-20260813-172846.397.zip",
+        "size": 10136,
+        "created_at": "2026-08-13T17:28:46.400-03:00"
+      }
+    ],
+    "keep": 5
+  }
+  ```
+
+  | Field | Meaning |
+  |---|---|
+  | `name` | The archive filename, and the id every other backup endpoint takes |
+  | `size` | Archive size in bytes |
+  | `created_at` | The file's modification time |
+  | `keep` | How many archives are retained; `POST /backup` prunes the oldest past this. `0` or less disables pruning |
+
+  ## System impact
+
+  Read-only. It does not freeze the system, so it is safe to poll while a backup
+  is being generated.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `401` | No session |
+  | `403` | The user is not a system admin |
+  | `500` | The backup folder could not be read |

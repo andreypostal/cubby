@@ -1,0 +1,84 @@
+info:
+  name: Sessions Cleanup Report
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{server}}/cron/sessions-cleanup"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Sessions Cleanup Report
+
+  Reports on the background job that sweeps expired sessions out of the
+  database. It **observes** the job, it does not trigger it — a `GET` that ran
+  the sweep would not be a `GET`.
+
+  ## Requires a system admin
+
+  System-admin scoped: it describes the server itself, not any workspace.
+
+  ## The job it reports on
+
+  Expired session rows are deleted every hour. The schedule starts immediately
+  on boot, so sessions that expired while the server was down are swept at
+  startup rather than waiting out the first interval. The job is a singleton: if
+  a run is somehow still going when the next is due, that one is rescheduled
+  instead of running alongside.
+
+  ## Response
+
+  ```json
+  {
+    "job": "cleanup-sessions-cron",
+    "interval_seconds": 3600,
+    "next_run": "2026-08-13T18:26:42.079-03:00",
+    "runs": [
+      {
+        "started_at": "2026-08-13T17:26:42.080-03:00",
+        "duration_ms": 0,
+        "removed": 0,
+        "status": "ok"
+      }
+    ]
+  }
+  ```
+
+  | Field | Meaning |
+  |---|---|
+  | `job` | The module id of the scheduled job |
+  | `interval_seconds` | How often it runs — 3600, one hour |
+  | `next_run` | When it fires next. Absent while the scheduler is not running |
+  | `runs` | The **last three** runs, newest first. Empty before the first one completes |
+
+  Each run carries `started_at`, `duration_ms`, how many sessions it `removed`,
+  and a `status`:
+
+  | Status | Meaning |
+  |---|---|
+  | `ok` | The sweep ran; `removed` is how many rows it erased |
+  | `skipped` | The system was frozen for a backup or a restore, so the sweep stood down. `removed` is 0 and `error` says why |
+  | `failed` | The delete itself errored. `removed` is 0 and `error` carries the reason |
+
+  A `skipped` run is normal operation, not a fault — the next hourly run picks
+  the work up.
+
+  ## System impact
+
+  Read-only, and served from memory: the run log is an in-process ring buffer of
+  the last three runs, so **it resets on restart** and is not queryable history.
+  It does not touch the database.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `401` | No session |
+  | `403` | The user is not a system admin |

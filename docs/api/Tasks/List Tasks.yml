@@ -1,0 +1,94 @@
+info:
+  name: List Tasks
+  type: http
+  seq: 11
+
+http:
+  method: GET
+  url: "{{server}}/tasks?status=active"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # List Tasks
+
+  The workspace overview: every task **definition** the board holds, not the
+  occurrences of a day. This is what answers "what am I currently on the hook
+  for?", and it is where a task gets picked to be stopped or resumed.
+
+  ## Query parameters
+
+  | Param | Required | Notes |
+  |---|---|---|
+  | `status` | no | `active` (default), `stopped` or `all` |
+
+  Defaulting to `active` keeps the common question a plain `GET /tasks`. A task
+  counts as stopped once it has a `stopped_at`.
+
+  A `once` task whose day is already behind us is neither: nothing ever stopped
+  it, its window simply ran out. It is left out of `active` (and out of
+  `active_count`), so the slice stays what is genuinely still ahead. `all` keeps
+  reporting it, since it is the slice that hides nothing.
+
+  ## Response
+
+  ```json
+  {
+    "tasks": [ ... ],
+    "active_count": 7,
+    "stopped_count": 2
+  }
+  ```
+
+  Both counts always describe the **whole board**, never the returned slice, so
+  a client can label both filters from a single request.
+
+  Each entry is the full task payload plus two derived fields:
+
+  | Field | Meaning |
+  |---|---|
+  | `next_occurrence` | The first day from today onwards the recurrence fires on, `YYYY-MM-DD`, or `null` when there is none left. |
+  | `resumable` | Whether `POST /tasks/:taskID/resume` would actually succeed. |
+
+  ### `next_occurrence`
+
+  Resolved by walking forward from today (in the board's timezone) through the
+  same `Occurs` engine the day view uses, so a monthly rule that shifts off a
+  weekend reports the shifted date, not the nominal one. The walk stops at
+  `ends_on`, and is capped at 366 days — past that a recurrence that has not
+  fired has none left to fire.
+
+  Stopping ends the window on **today**, so a task stopped moments ago can still
+  report today as its next occurrence — that day was already scheduled. From
+  tomorrow on it reports `null`.
+
+  ### `resumable`
+
+  Stopping and resuming builds a **chain**: resuming clones the task into a new
+  run that starts later, leaving the stopped one behind as history. Only the
+  newest run of a chain is worth resuming — an older one always overlaps the
+  clone that already continued it, which resume refuses with a `400`.
+
+  So `resumable` is true only when the task is stopped, recurring, and no
+  sibling of its chain starts after it. A stopped task with
+  `resumable: false` is finished history; the run that took over from it is the
+  one to act on.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Read-only otherwise. One query for the board's tasks; the next occurrence
+    and the chain bookkeeping are resolved in memory.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | `status` is present but not `active`, `stopped` or `all` |
+  | `403` | No session, or the session has no active workspace |

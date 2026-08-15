@@ -1,0 +1,22 @@
+info:
+  name: Categories
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+docs: |-
+  # Recipe Categories
+
+  Free-form labels a workspace defines for itself — `Desserts`, `Breakfast`,
+  `Brunch`, `Lunch`. They exist independently of any recipe: creating one does
+  not touch a recipe, and deleting one does not delete the recipes that carried
+  it, it only unassigns them.
+
+  Names are unique per workspace, compared **case-insensitively**, so
+  `Desserts` and `desserts` cannot coexist.
+
+  `recipe_count` on each category counts only recipes that are **not archived**,
+  so the number matches what a filter on that category would actually return in
+  the default listing.

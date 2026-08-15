@@ -1,0 +1,15 @@
+info:
+  name: Delete Routine
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{server}}/routines/{{routineID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

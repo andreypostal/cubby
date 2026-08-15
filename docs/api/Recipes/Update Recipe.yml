@@ -1,0 +1,87 @@
+info:
+  name: Update Recipe
+  type: http
+  seq: 4
+
+http:
+  method: PATCH
+  url: "{{server}}/recipes/{{recipeID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Chocolate Cake",
+        "description": "Dense, not too sweet",
+        "estimated_minutes": 75,
+        "favorite": true,
+        "category_ids": [{{categoryID}}],
+        "ingredients": [
+          { "name": "Dark chocolate", "quantity": "220 g" },
+          { "name": "Butter", "quantity": "150 g" }
+        ],
+        "steps": [
+          { "title": "Fold in the eggs", "description": "Let the mix cool first." },
+          { "title": "Melt the chocolate", "description": "Over a water bath." }
+        ]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Update Recipe
+
+  Replaces the recipe **whole**. Despite the `PATCH` verb, this is not a partial
+  update: the payload is the recipe's new complete state.
+
+  ## What replace means
+
+  | Sent | Result |
+  |---|---|
+  | `ingredients: [a, b]` | The recipe now has exactly `a` and `b`, in that order |
+  | `ingredients: []` or omitted | The recipe now has **no** ingredients |
+  | `steps` reordered | The new array order becomes the new `position` order |
+  | `category_ids: [1]` | Every other category is unassigned |
+
+  A client that loads the recipe, edits one field and sends everything back is
+  the intended usage. A client that sends only the changed field will erase the
+  rest.
+
+  ## Why replace instead of per-row endpoints
+
+  A recipe edit is one user action — add a row, drag a step, delete a line, save.
+  Modelling that as a stream of `POST`/`DELETE`/`PATCH` calls per ingredient
+  would leave the recipe observable in states the user never asked for if one
+  call fails partway. Here the swap runs in a **single transaction**: rows are
+  cleared and rewritten together, or nothing changes.
+
+  Reordering steps is therefore just a resend in the new order. Use
+  `Reorder Steps` instead when only the order changed and resending every step's
+  markdown would be wasteful.
+
+  ## Row identity
+
+  Ingredients and steps are **hard-deleted and recreated**, so their ids change
+  on every save. They are content of the recipe, not entities in their own
+  right — nothing outside the recipe may hold a reference to them. Only use ids
+  read back from the most recent response.
+
+  ## System impact
+
+  In one transaction: updates the `recipes` row, hard-deletes and recreates all
+  `ingredients` and `steps` rows, and replaces the `recipe_categories` join
+  rows.
+
+  Responds `200` with the full recipe, carrying the newly assigned ids.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; malformed JSON; a whitespace-only name; a `category_ids` entry that does not exist in this workspace |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |
+  | `422` | Field validation failed, same rules as `Create Recipe` |

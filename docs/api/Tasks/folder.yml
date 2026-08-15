@@ -1,0 +1,78 @@
+info:
+  name: Tasks
+  type: folder
+  seq: 4
+
+request:
+  auth: inherit
+
+docs: |-
+  # Task Manager
+
+  A calendar board that answers "what must I do today?", and lets the user walk
+  backwards into history and forwards into planned work.
+
+  ## How the module works
+
+  Occurrences are **computed on read, never stored**. Only two things are ever
+  persisted:
+
+  - `Task` — the recurrence rule plus the window `[starts_on, ends_on]` it is
+    active in.
+  - `TaskEntry` — one row per day the user explicitly recorded an outcome for.
+
+  There is no occurrence table and no background worker. A day view runs exactly
+  two queries (tasks whose window overlaps the range, then the entries recorded
+  in it) and joins them in memory, so asking for a month in 2031 works instantly
+  and editing a task never requires reconciling generated rows.
+
+  ## Recurrence types
+
+  - `once` — fires only on `starts_on`. Cannot be stopped or resumed.
+  - `daily` — every day inside the window.
+  - `weekly` — the weekdays listed in `weekdays` (0 = Sunday .. 6 = Saturday).
+  - `monthly` — exactly one occurrence per calendar month.
+  - `annual` — exactly one occurrence per year, in the month `month_of_year`
+    names (1 = January .. 12 = December).
+
+  A "weekdays only" task is just a `weekly` task with Mon–Fri selected.
+
+  ### Monthly and annual resolution
+
+  `day_of_month` is resolved in three steps — the same three for `annual`, only
+  restricted to the one month `month_of_year` picks:
+
+  1. **Clamp** to the month's real length — day 31 becomes Feb 28 / Feb 29 /
+     Apr 30. This is why `31` naturally means "last day of the month".
+  2. **Build** the date.
+  3. **Shift** off weekends per `business_day_strategy`
+     (`none` | `previous` (default) | `next` | `closest`). If the shift would
+     cross into another month it reverses direction instead, so an occurrence
+     always lands inside its own month.
+
+  ## Statuses
+
+  A day's status is either recorded or derived:
+
+  | Status      | Source                                       |
+  |-------------|----------------------------------------------|
+  | `completed` | stored `TaskEntry`                            |
+  | `skipped`   | stored `TaskEntry`                            |
+  | `failed`    | stored `TaskEntry`                            |
+  | `pending`   | derived — day has passed, no entry recorded  |
+  | `future`    | derived — day has not happened yet           |
+
+  ## Recurrence is immutable
+
+  `PATCH /tasks/:taskID` edits metadata only. Changing a rule after the fact
+  would silently rewrite the past — days that were pending would stop being days
+  at all, and recorded entries would dangle. To change a rule the user stops the
+  task and creates a new one, or resumes into a clone.
+
+  ## Authentication
+
+  Every endpoint here is workspace-scoped: send
+  `Authorization: Bearer {{token}}` for a session that has an active workspace
+  (`PATCH /auth/me/workspace`). A task belonging to another workspace is
+  reported as `403`, exactly like a task that does not exist, so the API never
+  confirms which ids are real.

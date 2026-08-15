@@ -1,0 +1,62 @@
+info:
+  name: Update Task
+  type: http
+  seq: 3
+
+http:
+  method: PATCH
+  url: "{{server}}/tasks/{{taskID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Pay the invoice",
+        "icon": "receipt",
+        "description": "Company invoice, updated payee",
+        "instructions": "Open the bank app, use the saved payee, keep the receipt.",
+        "pinned": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Update Task
+
+  Edits a task's **metadata only**: `name`, `icon`, `description`,
+  `instructions`, `pinned`.
+
+  ## Recurrence is immutable
+
+  `recurrence_type`, `weekdays`, `day_of_month`, `business_day_strategy` and
+  `starts_on` cannot be changed and are not part of this request body. Sending
+  them has no effect.
+
+  The reason is the compute-on-read design: occurrences are derived from the
+  rule every time they are read, so mutating a rule would silently rewrite the
+  **past**. Days that were `pending` would stop being days at all, and entries
+  recorded against them would dangle with nothing to attach to. Immutability
+  makes history permanently truthful and makes orphan entries impossible.
+
+  To change a rule, use `Stop Task` and create a new one — or `Resume Task`,
+  which clones the definition forward from a date of your choosing.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Updates the metadata columns of one `Task` row.
+  - No `TaskEntry` is created, changed or removed. No occurrence changes,
+    because no recurrence field can change here.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or malformed JSON |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |
+  | `422` | `name` missing or outside 3–100 chars, `icon` missing or over 50, `description` over 250, `instructions` over 5000 |

@@ -1,0 +1,52 @@
+info:
+  name: Stop Task
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{server}}/tasks/{{taskID}}/stop"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Stop Task
+
+  Ends a recurring task: it produces no occurrences from tomorrow onward, while
+  everything it already produced stays exactly as it was.
+
+  ## How it works
+
+  Two columns are written on the existing row:
+
+  - `ends_on = today` (in the board's timezone) — the window is inclusive, so
+    **today's occurrence is still visible and still markable**. Tomorrow onward
+    is gone.
+  - `stopped_at = now` — audit only. It is what distinguishes "the user stopped
+    this" from "this was created with an end date".
+
+  Nothing is cloned, nothing is deleted, and **no `TaskEntry` is touched**. An
+  outcome recorded last week still reads back identically after the stop, which
+  is the whole point of stopping instead of deleting.
+
+  The task keeps appearing in `GET /tasks?include_stopped=true` and in day and
+  range views for any date inside its old window.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Updates `ends_on` and `stopped_at` on one `Task` row.
+  - Creates nothing.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; the task is `once` (it already ends on the day it fires, so there is nothing to stop); the task is already stopped |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |

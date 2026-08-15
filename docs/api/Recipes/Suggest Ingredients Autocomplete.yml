@@ -1,0 +1,21 @@
+info:
+  name: Suggest Ingredients Autocomplete
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{server}}/recipes/ingredients/suggestion"
+  body:
+    type: json
+    data: |-
+      {
+        "term": "cho"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,15 @@
+info:
+  name: Toggle Item Bought
+  type: http
+  seq: 5
+
+http:
+  method: PATCH
+  url: "{{server}}/shop/lists/{{listID}}/items/{{itemID}}/toggle"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

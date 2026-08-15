@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build the artifacts without tagging or publishing
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  release:
+    name: GoReleaser
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the tag and publishing the GitHub release
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      dry_run: ${{ steps.tag.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Resolve the release tag
+        id: tag
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          # Major.Date.Run, which stays sortable and never needs a human to pick
+          # the next number
+          tag="v1.$(date -u +'%Y%m%d').${{ github.run_number }}"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag (dry run: $DRY_RUN)"
+
+      - name: Create the tag
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: >-
+            ${{ steps.tag.outputs.dry_run == 'true'
+                && 'release --clean --snapshot --skip=publish'
+                || 'release --clean' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Read by the release notes footer
+          DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME != '' && format('{0}/cubby', secrets.DOCKERHUB_USERNAME) || format('ghcr.io/{0}', github.repository) }}
+
+      - name: Upload the artifacts
+        if: steps.tag.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          retention-days: 7
+
+  docker:
+    name: Docker image
+    needs: release
+    if: needs.release.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Pushing to GitHub Container Registry with the job's own token
+      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      # The tag the release job just pushed
+      - name: Checkout the released tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Read the build stamps
+        id: stamp
+        run: |
+          set -euo pipefail
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract the image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ env.DOCKERHUB_USERNAME != '' && format('{0}/cubby', env.DOCKERHUB_USERNAME) || '' }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.release.outputs.tag }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=Cubby
+            org.opencontainers.image.description=Self-hosted lists, tasks, recipes and routines
+            org.opencontainers.image.version=${{ needs.release.outputs.tag }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.release.outputs.tag }}
+            COMMIT=${{ steps.stamp.outputs.commit }}
+            BUILD_DATE=${{ steps.stamp.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: mode=max
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Published images"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

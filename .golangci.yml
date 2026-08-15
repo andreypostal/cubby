@@ -1,0 +1,55 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # The system tests live behind this tag, and an unlinted package is the one
+  # where a mistake survives
+  build-tags:
+    - system
+
+linters:
+  default: standard
+  enable:
+    # Errors returned from a body that was never closed, or a nil check that
+    # returns nil anyway, are the failure modes that go quiet in a long-running
+    # server rather than crashing it
+    - bodyclose
+    - nilerr
+    - errorlint
+    # Security-relevant patterns: weak randomness, file permissions, archive
+    # extraction. The backup module is the one that handles untrusted archives.
+    - gosec
+    - copyloopvar
+    - misspell
+    - unconvert
+
+  # Deliberately not enabled: wrapcheck and contextcheck. Both fire in the
+  # hundreds on the repository/service layering used here, where passing an
+  # error straight up is the intended shape, and noise that nobody acts on is
+  # worse than no linter at all.
+
+  settings:
+    errcheck:
+      # Deliberate discards read as `_ = c.Error(err)` in the handlers
+      check-blank: false
+    gosec:
+      excludes:
+        # Permissions on the data and backup directories are chosen deliberately
+        # in core.Config and the backup module
+        - G301
+        - G302
+        - G306
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Tests read better with the assertions inline than with every error
+      # checked, and a helper that fails the test has already reported why
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - bodyclose

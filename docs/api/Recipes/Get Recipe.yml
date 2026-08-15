@@ -1,0 +1,82 @@
+info:
+  name: Get Recipe
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{server}}/recipes/{{recipeID}}"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const steps = data.steps || [];
+
+        if (steps.length) {
+          // Reversed, so Reorder Steps has something to actually reorder
+          const ids = steps.map((s) => s.id).reverse();
+          bru.setVar("reversedStepIDs", JSON.stringify(ids));
+          console.log("reversedStepIDs successfully saved to var");
+        } else {
+          console.error("No steps found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Get Recipe
+
+  The full recipe: everything the listing summary carries, plus the ingredients
+  and the steps.
+
+  ## How it works
+
+  Both lists come back sorted by `position`, with the row id as tiebreaker, so
+  the order is the one the user saved and is stable between two reads.
+
+  Archived recipes are returned normally here. The archive only affects the
+  default listing — a link to an archived recipe still opens.
+
+  ## Response
+
+  ```json
+  {
+    "id": 3,
+    "name": "Chocolate Cake",
+    "description": "Dense, not too sweet",
+    "estimated_minutes": 90,
+    "favorite": true,
+    "archived": false,
+    "categories": [{ "id": 1, "name": "Desserts", "recipe_count": 0 }],
+    "ingredient_count": 3,
+    "step_count": 2,
+    "ingredients": [
+      { "id": 11, "name": "Dark chocolate", "quantity": "200 g", "position": 0 }
+    ],
+    "steps": [
+      { "id": 21, "title": "Melt the chocolate", "description": "...", "position": 0 }
+    ],
+    "created_at": "2026-07-28T10:12:00Z",
+    "updated_at": "2026-07-28T10:12:00Z"
+  }
+  ```
+
+  `step.description` is markdown exactly as it was sent.
+
+  ## System impact
+
+  Read-only.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |

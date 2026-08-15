@@ -1,0 +1,103 @@
+services:
+  cubby:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: cubby:latest
+    container_name: cubby
+    restart: unless-stopped
+
+    init: true
+
+    ports:
+      - "${CUBBY_HOST_PORT:-8080}:${CUBBY_API_PORT:-8080}"
+
+    volumes:
+      - cubby-data:/data
+      - cubby-backups:/backups
+      # A TLS certificate and its private key, to serve https from the server
+      # itself. Read only, nothing ever writes to them, and the two CUBBY_API_TLS
+      # variables below have to point at them for TLS to be turned on:
+      # - ./certs:/certs:ro
+      # To manage configuration as a file instead of through the environment,
+      # uncomment this and drop a config.yaml next to this compose file:
+      # - ./config.yaml:/app/config.yaml:ro
+
+    environment:
+      # --- General ---------------------------------------------------------
+      # "prod" also switches the HTTP framework into release mode; anything else
+      # keeps debug logging on.
+      CUBBY_ENV: ${CUBBY_ENV:-prod}
+      # Both paths must stay inside the mounted volumes above, otherwise the
+      # data lives in the container's writable layer and dies with it.
+      CUBBY_DATA_DIR: ${CUBBY_DATA_DIR:-/data}
+      CUBBY_BACKUP_DIR: ${CUBBY_BACKUP_DIR:-/backups}
+      # Backup archives to retain; older ones are pruned after each new backup.
+      # Zero or less disables pruning.
+      CUBBY_BACKUP_KEEP: ${CUBBY_BACKUP_KEEP:-5}
+
+      # --- HTTP server -----------------------------------------------------
+      # Keep 0.0.0.0: the application default of 127.0.0.1 is unreachable from
+      # outside the container.
+      CUBBY_API_BIND_IP: ${CUBBY_API_BIND_IP:-0.0.0.0}
+      CUBBY_API_PORT: ${CUBBY_API_PORT:-8080}
+      # The certificate the server serves with. Left empty, which is the
+      # default, the port answers plain HTTP; set both to the paths inside the
+      # container and uncomment the certs mount above to serve https instead.
+      CUBBY_API_TLS_CERT_FILE: "${CUBBY_API_TLS_CERT_FILE:-}"
+      CUBBY_API_TLS_KEY_FILE: "${CUBBY_API_TLS_KEY_FILE:-}"
+      CUBBY_API_READ_TIMEOUT: ${CUBBY_API_READ_TIMEOUT:-10s}
+      CUBBY_API_WRITE_TIMEOUT: ${CUBBY_API_WRITE_TIMEOUT:-60s}
+      CUBBY_API_IDLE_TIMEOUT: ${CUBBY_API_IDLE_TIMEOUT:-60s}
+
+      # --- CORS ------------------------------------------------------------
+      # Comma-separated lists. The UI and the API share an origin, so these only
+      # affect API clients hosted elsewhere; narrow the origins if you have any.
+      # CUBBY_API_CORS_ALLOWED_ORIGINS: "${CUBBY_API_CORS_ALLOWED_ORIGINS:-*}"
+      # CUBBY_API_CORS_ALLOWED_METHODS: "${CUBBY_API_CORS_ALLOWED_METHODS:-get,post,put,patch,delete,options}"
+      # CUBBY_API_CORS_ALLOWED_HEADERS: "${CUBBY_API_CORS_ALLOWED_HEADERS:-Origin,Content-Type,Accept,Authorization}"
+      # CUBBY_API_CORS_EXPOSED_HEADERS: "${CUBBY_API_CORS_EXPOSED_HEADERS:-}"
+      # CUBBY_API_CORS_MAX_AGE: ${CUBBY_API_CORS_MAX_AGE:-3600}
+
+      # --- Database --------------------------------------------------------
+      # Query string appended to the SQLite DSN; the file path itself is always
+      # <CUBBY_DATA_DIR>/main.db and is not configurable.
+      CUBBY_DB_SQLITE_PARAMS: "${CUBBY_DB_SQLITE_PARAMS:-_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)}"
+      CUBBY_DB_MAX_OPEN_CONNS: ${CUBBY_DB_MAX_OPEN_CONNS:-4}
+      CUBBY_DB_MAX_IDLE_CONNS: ${CUBBY_DB_MAX_IDLE_CONNS:-2}
+      CUBBY_DB_CONN_MAX_LIFETIME: ${CUBBY_DB_CONN_MAX_LIFETIME:-1h}
+
+      # --- Authentication --------------------------------------------------
+      # Left unset, the server generates a secret on first boot and keeps it in
+      # /data/jwt.secret, on the volume below. That file is deliberately left
+      # out of the backup archives. Set this only to pin a secret you manage
+      # yourself: openssl rand -hex 32
+      CUBBY_JWT_SECRET: "${CUBBY_JWT_SECRET:-}"
+      # Changing this only affects newly issued tokens.
+      CUBBY_JWT_EXPIRES_IN: ${CUBBY_JWT_EXPIRES_IN:-24h}
+
+      # --- Search indexer --------------------------------------------------
+      # Indexes are opened per workspace and pooled; the pool sizes cap how many
+      # stay open at once, the idle times decide when an unused one is closed.
+      CUBBY_SHOP_INDEXER_WRITER_POOL_SIZE: ${CUBBY_SHOP_INDEXER_WRITER_POOL_SIZE:-5}
+      CUBBY_SHOP_INDEXER_READER_POOL_SIZE: ${CUBBY_SHOP_INDEXER_READER_POOL_SIZE:-5}
+      CUBBY_SHOP_INDEXER_WRITER_IDLE_TIME: ${CUBBY_SHOP_INDEXER_WRITER_IDLE_TIME:-5m}
+      CUBBY_SHOP_INDEXER_READER_IDLE_TIME: ${CUBBY_SHOP_INDEXER_READER_IDLE_TIME:-10m}
+      CUBBY_SHOP_INDEXER_SUGGESTION_LIMIT: ${CUBBY_SHOP_INDEXER_SUGGESTION_LIMIT:-5}
+      CUBBY_SHOP_INDEXER_SUGGEST_TIMEOUT: ${CUBBY_SHOP_INDEXER_SUGGEST_TIMEOUT:-5s}
+
+      # --- Logs ------------------------------------------------------------
+      # Level is debug, info, warn or error. Format is auto, text or json,
+      # and auto writes json here because the environment is prod.
+      CUBBY_LOG_LEVEL: ${CUBBY_LOG_LEVEL:-info}
+      CUBBY_LOG_FORMAT: ${CUBBY_LOG_FORMAT:-auto}
+
+      # --- Embedded UI -----------------------------------------------------
+      CUBBY_WEB_ENABLED: ${CUBBY_WEB_ENABLED:-true}
+
+      # Container timezone, used for log timestamps and date handling.
+      TZ: ${TZ:-UTC}
+
+volumes:
+  cubby-data:
+  cubby-backups:

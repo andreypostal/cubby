@@ -1,0 +1,69 @@
+info:
+  name: TLS Status
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: "{{server}}/settings/tls"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # TLS Status
+
+  Describes the certificate the API is serving with. It never carries the
+  private key, only what identifies the certificate.
+
+  ## Requires a system admin
+
+  System-admin scoped: it describes the server itself, not any workspace.
+
+  ## Response
+
+  On plain HTTP the answer is the whole story:
+
+  ```json
+  { "enabled": false }
+  ```
+
+  With a certificate loaded, `enabled` is `true` and a `certificate` object
+  comes along:
+
+  ```json
+  {
+    "enabled": true,
+    "certificate": {
+      "subject": "CN=lists.local",
+      "issuer": "CN=lists.local",
+      "dns_names": ["lists.local", "localhost"],
+      "ip_addresses": ["127.0.0.1"],
+      "not_before": "2026-08-09T00:00:00Z",
+      "not_after": "2027-08-09T00:00:00Z",
+      "fingerprint": "3B:9C:...:F1",
+      "chain_length": 1,
+      "self_signed": true,
+      "expired": false,
+      "loaded_at": "2026-08-13T17:23:19.512-03:00"
+    }
+  }
+  ```
+
+  `fingerprint` is the SHA-256 of the leaf certificate, colon separated, so it
+  can be compared against `openssl x509 -fingerprint -sha256` by eye.
+  `expired` is evaluated at request time against `not_after`, which lets a
+  client warn before a certificate lapses rather than after. `loaded_at` is when
+  the server read it — a certificate renewed on disk but not reloaded shows an
+  old `loaded_at` next to a new `not_after`.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `401` | No session |
+  | `403` | The user is not a system admin |

@@ -1,0 +1,49 @@
+info:
+  name: Delete Category
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{server}}/recipes/categories/{{categoryID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Delete Category
+
+  Removes a label from the workspace.
+
+  ## How it works
+
+  A category is a label, not an owner. Deleting one:
+
+  - drops every `recipe_categories` join row that referenced it, so the recipes
+    that carried it simply stop carrying it;
+  - **leaves the recipes themselves untouched** — none of them is archived or
+    deleted.
+
+  Detaching happens first, in the same call, so no recipe is ever left pointing
+  at a category that no longer resolves.
+
+  There is no "in use" guard: a category used by twenty recipes deletes as
+  readily as an unused one. If that is not what the user wants, they want a
+  rename.
+
+  ## System impact
+
+  - Deletes the join rows for this category.
+  - Soft-deletes one `categories` row.
+  - Responds `204` with no body.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or the category was already deleted |
+  | `403` | No session; no active workspace; the category does not exist or belongs to another workspace |

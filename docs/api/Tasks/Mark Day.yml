@@ -1,0 +1,82 @@
+info:
+  name: Mark Day
+  type: http
+  seq: 9
+
+http:
+  method: PATCH
+  url: "{{server}}/tasks/{{taskID}}/days/2026-01-30"
+  body:
+    type: json
+    data: |-
+      {
+        "status": "completed",
+        "note": "Paid from the joint account, receipt filed."
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Mark Day
+
+  Records the outcome of one occurrence. This is the only endpoint that writes
+  history.
+
+  ## Request body
+
+  | Field | Required | Notes |
+  |---|---|---|
+  | `status` | yes | `completed` \| `skipped` \| `failed` |
+  | `note` | no | max 250 chars |
+
+  `pending` and `future` are **not** valid here — they are derived from the
+  absence of a record, not values you can store. To go back to `pending`, use
+  `Clear Day`.
+
+  ## How it works
+
+  Writes (or overwrites) a single `TaskEntry` keyed on `(task_id, day)`. That
+  pair carries a unique index, which is what makes the operation an upsert:
+
+  - **Marking is idempotent.** Re-sending the same request returns `200` again
+    and changes nothing. Sending a different status overwrites in place. Nothing
+    accumulates, so a client can retry safely without special-casing.
+  - A day the user previously cleared is a soft-deleted row still holding the
+    unique slot; marking it again **revives that row** rather than failing on
+    the constraint.
+
+  ### The three rules an entry must satisfy
+
+  Checked before anything is written:
+
+  1. The day must not be in the future (relative to the board's timezone).
+  2. The day must be an actual occurrence of this task — the weekly bitmask must
+     include that weekday, or the monthly rule must resolve to that exact date.
+  3. The day must be inside the task's `[starts_on, ends_on]` window.
+
+  Rules 2 and 3 are one check in practice, since the occurrence test already
+  starts from the window. Together they guarantee an entry can never dangle:
+  a row only ever exists for a day the task really produced.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - **Creates one `TaskEntry`** the first time a day is marked; updates it on
+    every subsequent mark of the same day.
+  - The `Task` row is not modified. Unlike `routine_goals`, there is no points
+    counter to keep in sync, so re-marking the same status is a no-op rather
+    than an error.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; the path date is not `YYYY-MM-DD`; malformed JSON; the day is in the future; the day is not an occurrence of this task (including any day outside its window) |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |
+  | `422` | `status` missing, or not one of `completed` / `skipped` / `failed`; `note` over 250 chars |

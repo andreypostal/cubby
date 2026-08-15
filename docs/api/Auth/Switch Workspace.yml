@@ -1,0 +1,21 @@
+info:
+  name: Switch Workspace
+  type: http
+  seq: 2
+
+http:
+  method: PATCH
+  url: "{{server}}/auth/me/workspace"
+  body:
+    type: json
+    data: |-
+      {
+        "workspace_id": {{workspaceID}}
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

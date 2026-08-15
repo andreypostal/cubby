@@ -1,0 +1,21 @@
+info:
+  name: Update Workspace
+  type: http
+  seq: 4
+
+http:
+  method: PATCH
+  url: "{{server}}/auth/workspaces/{{workspaceID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "My Household"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,32 @@
+# Baseline configuration baked into the container image.
+
+env: prod
+
+# Absolute paths so they do not depend on the working directory
+data_dir: /data
+backup_dir: /backups
+backup_keep: 5
+
+api:
+  host: 0.0.0.0
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 60s
+  idle_timeout: 60s
+
+db:
+  sqlite_params: "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+  max_open_conns: 4
+  max_idle_conns: 2
+  conn_max_lifetime: 1h
+
+jwt:
+  expires_in: 24h
+
+indexer:
+  writer_pool_size: 5
+  reader_pool_size: 5
+  writer_idle_time: 5m
+  reader_idle_time: 10m
+  suggestion_limit: 5
+  suggest_timeout: 5s

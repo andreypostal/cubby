@@ -1,0 +1,55 @@
+info:
+  name: Delete User
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{server}}/users/{{userID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Delete User
+
+  Removes somebody's access to this server. Their sessions end and they are
+  dropped from every cubby shared with them; the cubbies themselves stay with
+  their owners.
+
+  ## Requires a system admin
+
+  Three refusals, each protecting something that could not be undone from the
+  UI:
+
+  - You cannot delete yourself.
+  - You cannot delete the last remaining system admin.
+  - You cannot delete anyone who created cubbies. Users are soft deleted, so the
+    database cascade never fires and those cubbies would survive with an owner
+    nobody can sign in as. Delete them first, and the answer names them so you
+    know which:
+
+  ```json
+  {
+    "message": "the user still owns cubbies",
+    "details": { "workspaces": ["Home", "Groceries"] }
+  }
+  ```
+
+  ## Response
+
+  `204`, with no body.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The user id is not a number |
+  | `401` | No session |
+  | `403` | The user is not a system admin, or is deleting themselves |
+  | `404` | No such user |
+  | `409` | They own cubbies, or are the last system admin |

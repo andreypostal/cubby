@@ -1,0 +1,44 @@
+info:
+  name: Setup Status
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: "{{server}}/setup/status"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Setup Status
+
+  Whether this server still has to be set up. A server nobody has set up has no
+  users at all, so nobody could hold a session to ask with — this is public for
+  that reason, and it is what sends the UI to the setup screen instead of a
+  sign-in form nobody has an account for.
+
+  ## Public
+
+  No token. It carries nothing but the flag: the setup token itself is never in
+  a response body, it only ever reaches the server's log.
+
+  ## Response
+
+  ```json
+  { "required": true }
+  ```
+
+  `required` is answered from the user count on every call rather than from a
+  flag held in memory, so creating the first user with
+  `server setup new-user` while the server runs closes the setup phase just as
+  well as `POST /setup` does.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `500` | The user count could not be read |

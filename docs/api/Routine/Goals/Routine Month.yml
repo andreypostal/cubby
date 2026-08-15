@@ -1,0 +1,15 @@
+info:
+  name: Routine Month
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{server}}/routines/{{routineID}}/month?year=2026&month=8"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

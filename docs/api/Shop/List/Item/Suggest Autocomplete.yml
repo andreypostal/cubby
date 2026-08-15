@@ -1,0 +1,21 @@
+info:
+  name: Suggest Autocomplete
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{server}}/shop/lists/{{listID}}/items/suggestion"
+  body:
+    type: json
+    data: |-
+      {
+        "term": "mil"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,94 @@
+info:
+  name: Resume Task
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{server}}/tasks/{{taskID}}/resume"
+  body:
+    type: json
+    data: |-
+      {
+        "from": "2026-09-01"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("taskID", id);
+          console.log("resumed taskID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Resume Task
+
+  Brings a stopped task back, starting from a date of your choosing.
+
+  **The response is a new task, not the original.** Its `id` differs; save it if
+  you were holding the old one.
+
+  ## Request body
+
+  | Field | Required | Notes |
+  |---|---|---|
+  | `from` | no | `YYYY-MM-DD`. Defaults to today in the board's timezone. The body itself is optional — sending none means "resume from today". |
+
+  ## How it works
+
+  Resume **never mutates the original**. It inserts a sibling that copies every
+  field of the definition (name, icon, description, instructions, pinned, and
+  the entire recurrence rule) with:
+
+  - `starts_on = from`
+  - `ends_on = null` — open-ended, it is running again
+  - `stopped_at = null`
+  - `origin_task_id = ` the **root** of the chain, never the immediate parent
+
+  Leaving the original untouched is what keeps history permanently truthful: the
+  days it covered, and the entries recorded against them, stay attached to the
+  task that actually produced them. Pointing `origin_task_id` at the root rather
+  than the parent means the whole lineage is retrievable in one query however
+  many times the task is stopped and resumed — see `Get Task`, which returns it
+  as `chain`.
+
+  ### The overlap guard
+
+  A resume is rejected if **any** task in the same chain has a window that
+  reaches `from` or beyond — that is, any sibling that is open-ended, or whose
+  `ends_on` falls on or after `from`.
+
+  Without this the day view would list the same task twice on every day covered
+  by two windows. It also subsumes the "resume must start after the stop" rule:
+  since a stop sets `ends_on = today`, the earliest valid `from` is tomorrow.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - **Creates one new `Task`** row — the clone — linked to the chain root.
+  - The original `Task` is **not** modified. No `TaskEntry` is created, moved or
+    deleted.
+  - Responds `201` with the clone.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; the task is `once`; the task is not stopped; `from` is unparseable; `from` overlaps a window already in the chain (the message names the conflicting task and how far it runs) |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |
+  | `422` | `from` is present but not `YYYY-MM-DD` |

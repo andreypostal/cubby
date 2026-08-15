@@ -1,0 +1,57 @@
+info:
+  name: Archive Recipe
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{server}}/recipes/{{recipeID}}/archive"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Archive Recipe
+
+  Takes a recipe out of the default listing without destroying anything.
+
+  ## Archive vs delete
+
+  | | `POST /recipes/:recipeID/archive` | `DELETE /recipes/:recipeID` |
+  |---|---|---|
+  | Meaning | "not cooking this these days" | "this should not exist" |
+  | Ingredients and steps | kept | erased |
+  | Direct link to the recipe | still opens | gone |
+  | Reversible | yes, `unarchive` | no |
+  | Allowed on a live recipe | yes | **no** |
+
+  Archiving is the **required first step** before a permanent delete. That is
+  deliberate: it makes the destructive action take two separate decisions
+  instead of one misclick.
+
+  ## How it works
+
+  Sets `archived_at`. The recipe then:
+
+  - disappears from `GET /recipes` unless `archived=only` or `archived=include`;
+  - stops counting toward any category's `recipe_count`;
+  - still resolves on `GET /recipes/:recipeID`, and can still be edited.
+
+  Archiving an already archived recipe is a `400`, not a silent success — it
+  means the client's view is stale.
+
+  ## System impact
+
+  Sets one timestamp column. Responds `200` with the full recipe, now carrying
+  `"archived": true` and `archived_at`.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or the recipe is already archived |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |

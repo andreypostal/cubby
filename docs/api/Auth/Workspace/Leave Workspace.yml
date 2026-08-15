@@ -1,0 +1,15 @@
+info:
+  name: Leave Workspace
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{server}}/auth/workspaces/{{workspaceID}}/leave"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

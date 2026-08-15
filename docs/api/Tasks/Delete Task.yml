@@ -1,0 +1,58 @@
+info:
+  name: Delete Task
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{server}}/tasks/{{taskID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Delete Task
+
+  Soft-deletes a task and, with it, **its whole history**.
+
+  ## Delete vs stop
+
+  These are different intentions and should not be confused:
+
+  | | `DELETE /tasks/:taskID` | `POST /tasks/:taskID/stop` |
+  |---|---|---|
+  | Meaning | "this never should have existed" | "this ran and is now over" |
+  | Past occurrences | disappear from every view | stay visible |
+  | Recorded entries | become unreachable | untouched |
+  | Reversible by the API | no | yes, via `Resume Task` |
+
+  If the user wants the task to stop appearing tomorrow but keep the record of
+  what they did, they want **stop**, not delete.
+
+  ## How it works
+
+  The row is soft-deleted (`deleted_at` is set), so it is excluded from every
+  subsequent query — listings, day views and range views alike. Its `TaskEntry`
+  rows are left in place but are no longer reachable, since every read path
+  starts from the task.
+
+  Other tasks in the same stop/resume chain are **not** deleted; only the one
+  named in the path.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Soft-deletes exactly one `Task` row.
+  - Responds `204` with no body.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or the task was already deleted |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |

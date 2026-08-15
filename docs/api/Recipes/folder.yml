@@ -1,0 +1,70 @@
+info:
+  name: Recipes
+  type: folder
+  seq: 5
+
+request:
+  auth: inherit
+
+docs: |-
+  # Recipes
+
+  A workspace's cookbook. A recipe is a name, a short description and an
+  estimated time, plus two ordered lists it owns outright — **ingredients** and
+  **steps** — and any number of **categories** it borrows.
+
+  ## What owns what
+
+  | Entity | Lifetime | Shared |
+  |---|---|---|
+  | `Recipe` | belongs to a workspace | no |
+  | `Ingredient` | belongs to one recipe, dies with it | never |
+  | `Step` | belongs to one recipe, dies with it | never |
+  | `Category` | belongs to a workspace | yes, by many recipes |
+
+  Ingredients and steps are **not** addressable on their own: there is no
+  `POST /recipes/:id/ingredients`. `PATCH /recipes/:recipeID` sends the whole
+  recipe and the server replaces both lists with what it receives. That is what
+  makes "add a row, drag a step, delete a line" a single save with no partial
+  state to reconcile, and it is also how a reorder is expressed — resend the
+  steps in the new order.
+
+  `PATCH /recipes/:recipeID/steps/reorder` exists for the narrower case where
+  only the order changed and the client does not want to resend the markdown of
+  every step.
+
+  ## Ordering
+
+  Both lists are ranked by a 0-based `position` assigned from the array index on
+  save. Blank rows are dropped rather than stored, so a form can keep an empty
+  line at the bottom without polluting the recipe.
+
+  ## Archive, then delete
+
+  A recipe is removed in two deliberate moves:
+
+  1. `POST /recipes/:recipeID/archive` — it leaves the default listing but keeps
+     everything. Reversible with `unarchive`.
+  2. `DELETE /recipes/:recipeID` — permanent, and **only accepted on an already
+     archived recipe**. Ingredients, steps and category links go with it.
+
+  Deleting a live recipe is a `400`, not a silent success.
+
+  ## Listing
+
+  `GET /recipes` is the only read that is filtered, and it is paginated.
+
+  - `search` matches **any part** of the name, case-insensitively — searching
+    `cak` finds `Chocolate Cake`.
+  - `category_id` may repeat, or be a single comma separated list. A recipe
+    matches if it carries **at least one** of them.
+  - `archived` is `exclude` (default), `only` or `include`.
+  - **Favorites always sort first**, then name, regardless of any filter.
+
+  ## Authentication
+
+  Every endpoint here is workspace-scoped: send
+  `Authorization: Bearer {{token}}` for a session that has an active workspace
+  (`PATCH /auth/me/workspace`). A recipe or a category belonging to another
+  workspace is reported as `403`, exactly like one that does not exist, so the
+  API never confirms which ids are real.

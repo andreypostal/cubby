@@ -1,0 +1,71 @@
+info:
+  name: Day View
+  type: http
+  seq: 7
+
+http:
+  method: GET
+  url: "{{server}}/tasks/day?date=2026-01-30"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Day View
+
+  Answers "what must I do on this day?" — every task that occurs on a single
+  date, with its status.
+
+  ## Query parameters
+
+  | Param | Required | Notes |
+  |---|---|---|
+  | `date` | no | `YYYY-MM-DD`. Defaults to **today in the board's timezone**, not in the server's or the browser's. |
+
+  ## How it works
+
+  Two queries, then a pure in-memory join — the same path `Range View` uses:
+
+  1. load the tasks whose window `[starts_on, ends_on]` covers the date,
+  2. load the entries recorded for those tasks on it,
+  3. keep the tasks that actually occur on the date, and attach the recorded
+     outcome or derive one from its absence.
+
+  Step 3 is the part SQL cannot express: whether a weekly bitmask includes this
+  weekday, or whether a monthly rule resolves to this exact date after clamping
+  and the weekend shift.
+
+  Each occurrence carries the full `task` payload alongside `day`, `status` and
+  `note`.
+
+  ## Statuses
+
+  | Status | Meaning |
+  |---|---|
+  | `completed` | recorded by the user |
+  | `skipped` | recorded by the user |
+  | `failed` | recorded by the user |
+  | `pending` | the day has passed or is today, and nothing was recorded |
+  | `future` | the day has not happened yet — it cannot be marked |
+
+  A task that does not occur on the date is simply absent; there is no
+  "disabled" entry to filter out.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Read-only otherwise. **No occurrence is ever persisted** by reading a day —
+    that is the core of the design. Asking for a date years in the future works
+    and writes nothing.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | `date` is present but not a valid `YYYY-MM-DD` |
+  | `403` | No session, or the session has no active workspace |

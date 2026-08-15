@@ -1,0 +1,57 @@
+info:
+  name: Complete Setup
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{server}}/setup"
+  body:
+    type: json
+    data: |-
+      {
+        "token": "the setup_token from the server log",
+        "name": "Admin",
+        "username": "admin",
+        "password": "s3cret-enough"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Complete Setup
+
+  Creates the first user of a server nobody has set up yet. That user is always
+  a system administrator: there is nobody else around who could promote them.
+
+  ## Public
+
+  No token, because no session can exist yet. The credential is `token`, the
+  one-time value the server wrote to its log on first boot:
+
+  ```
+  WARN Setup required: this server has no users yet setup_token=7f3a9c1e...
+  ```
+
+  It is held in memory only, so restarting the server before the setup is
+  finished issues a new one and an old token stops working. It is compared in
+  constant time, and it buys exactly one administrator — replaying it against a
+  server that is now live is refused.
+
+  ## Response
+
+  `204`, with no body. The caller is expected to sign in with the credentials it
+  just chose.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The body is not valid JSON |
+  | `403` | The token does not match the one this server issued |
+  | `409` | The server already has users, or never announced a token |
+  | `422` | A field is missing, or the password is under 8 characters |

@@ -1,0 +1,75 @@
+info:
+  name: Restore Backup
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{server}}/backups/{{backupName}}/restore"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Restore Backup
+
+  Replaces the live database and search indexes with the contents of an archive
+  — **in place, without restarting the server**.
+
+  This is the destructive one. Everything written since the archive was taken is
+  gone when it returns. Take a fresh `POST /backup` first if the current state is
+  worth keeping.
+
+  ## Requires a system admin
+
+  System-admin scoped, like the rest of the backup family.
+
+  ## How it works
+
+  The order exists so a bad archive can never leave the server without a
+  database:
+
+  1. **Stage** — the archive is unpacked to a temporary folder and checked
+     first. A zip that is corrupt, or does not carry a database, fails here with
+     a `400`, before anything live has been touched.
+  2. **Freeze** — every in-flight request is drained and new ones are held. The
+     caller's own request leaves the gate first, so it does not wait on itself.
+  3. **Pause** — the search indexers release their file handles.
+  4. **Swap** — the database is closed and the staged files take its place. If
+     the swap fails, the previous files are put back and reopened.
+  5. **Migrate** — every module migration runs against the restored database, so
+     an archive taken on an older build comes up on the running schema.
+  6. **Resume and unfreeze** — indexers restart and held requests are released.
+
+  Restoring is capped at 60 seconds. If the system cannot be frozen in time the
+  answer is `409` and nothing was changed.
+
+  ## What callers see
+
+  Requests that arrive mid-restore are held, not refused, and are served against
+  the restored data once it completes. **Existing sessions survive** only if the
+  archive contains them: session rows are part of the database, so a token
+  issued after the archive was taken stops being recognised, and that user is
+  logged out.
+
+  ## Name handling
+
+  `:name` is a bare filename, never a path. A separator, a `..`, or a name that
+  is not a backup archive is rejected with `400` before the disk is touched.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The name is not a valid archive name, or the archive could not be read |
+  | `401` | No session |
+  | `403` | The user is not a system admin |
+  | `404` | No archive by that name in the backup folder |
+  | `409` | The system could not be frozen in time — another backup or restore is in flight |
+  | `500` | The indexers could not be paused, or the swap itself failed |
+
+  Responds `204` with no body.

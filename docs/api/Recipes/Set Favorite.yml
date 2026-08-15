@@ -1,0 +1,53 @@
+info:
+  name: Set Favorite
+  type: http
+  seq: 6
+
+http:
+  method: PATCH
+  url: "{{server}}/recipes/{{recipeID}}/favorite"
+  body:
+    type: json
+    data: |-
+      {
+        "favorite": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Set Favorite
+
+  Marks or unmarks a recipe as a favorite.
+
+  ## Why a flag and not a toggle
+
+  The body carries the wanted state, not "flip it". A toggle endpoint is not
+  idempotent: a retried request after a dropped response would undo the change,
+  and two devices acting on the same recipe would race. Sending `true` twice
+  simply leaves it `true`.
+
+  ## Effect
+
+  Favorites sort **first in every listing**, ahead of the alphabetical order and
+  regardless of which filters are active. This is the only field with that
+  privilege.
+
+  Archived recipes can be favorited; it just has no visible effect until they
+  are unarchived, since they are out of the default listing.
+
+  ## System impact
+
+  Updates one column on one `recipes` row. Responds `200` with the full recipe.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or malformed JSON |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |

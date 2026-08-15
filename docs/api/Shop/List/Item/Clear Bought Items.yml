@@ -1,0 +1,72 @@
+info:
+  name: Clear Bought Items
+  type: http
+  seq: 7
+
+http:
+  method: PATCH
+  url: "{{server}}/shop/lists/{{listID}}/items/clear-bought"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Clear Bought Items
+
+  Resets the whole list back to "nothing bought yet" in one request — the
+  end-of-shopping-trip action, once the cart has been emptied at home.
+
+  ## How it works
+
+  Every item of the list currently flagged `bought` goes back to `bought: false`
+  and loses its `bought_at`. Items that were still to buy are untouched.
+
+  Nothing is sent in the body: which items are cleared is decided by the flag on
+  the server, not by a list of ids the client guessed at. It is the bulk form of
+  `PATCH /shop/lists/:listID/items/:itemID/toggle`, and it is idempotent —
+  running it on a list with nothing bought is not an error, it just changes
+  nothing.
+
+  **This does not delete anything.** A recurring list is meant to be reused week
+  after week, so clearing it keeps every item and only wipes the ticks. To
+  actually remove items, delete them one by one.
+
+  ## Response
+
+  The list's items after the reset — the array only, not the list envelope:
+
+  ```json
+  [
+    {
+      "id": 3,
+      "name": "Whole milk 2L",
+      "notes": "Semi-skimmed if unavailable",
+      "bought": false,
+      "bought_at": "0001-01-01T00:00:00Z",
+      "created_at": "2026-08-13T17:24:11.412-03:00"
+    },
+    {
+      "id": 4,
+      "name": "Sourdough bread",
+      "notes": "",
+      "bought": false,
+      "bought_at": "0001-01-01T00:00:00Z",
+      "created_at": "2026-08-13T17:24:12.907-03:00"
+    }
+  ]
+  ```
+
+  A cleared `bought_at` serialises as the zero time, not as `null`.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | `listID` is not a number |
+  | `403` | No session, the session has no active workspace, or the list belongs to another workspace |
+
+  Responds `200` with the list's items.

@@ -1,0 +1,29 @@
+info:
+  name: List Members
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{server}}/auth/workspaces/{{workspaceID}}/members"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.members && data.members[0] && data.members[0].id;
+
+        if (id) {
+          bru.setVar("memberID", id);
+          console.log("memberID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

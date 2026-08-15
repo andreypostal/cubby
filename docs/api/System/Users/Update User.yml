@@ -1,0 +1,56 @@
+info:
+  name: Update User
+  type: http
+  seq: 3
+
+http:
+  method: PATCH
+  url: "{{server}}/users/{{userID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Ada Lovelace",
+        "is_system_admin": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Update User
+
+  Renames a user and grants or takes away their system-admin access. The
+  username is not changeable: it is what people sign in with.
+
+  ## Requires a system admin
+
+  Two refusals keep a server from ending up with nobody able to administer it:
+
+  - You cannot demote yourself. It would take away the page you are standing on,
+    and it reads as a misclick either way.
+  - You cannot demote the last remaining administrator.
+
+  Demotion needs no session cleanup: the auth middleware reads the flag from the
+  database on every request, so it takes effect on the next one.
+
+  ## Response
+
+  ```json
+  { "id": 2, "name": "Ada Lovelace", "username": "ada", "is_system_admin": true }
+  ```
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The user id is not a number |
+  | `401` | No session |
+  | `403` | The user is not a system admin, or is demoting themselves |
+  | `404` | No such user |
+  | `409` | It would demote the last system admin |
+  | `422` | The name is missing or out of range |

@@ -1,0 +1,109 @@
+info:
+  name: Create Recipe
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{server}}/recipes"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Chocolate Cake",
+        "description": "Dense, not too sweet",
+        "estimated_minutes": 90,
+        "favorite": false,
+        "category_ids": [{{categoryID}}],
+        "ingredients": [
+          { "name": "Dark chocolate", "quantity": "200 g" },
+          { "name": "Butter", "quantity": "150 g" },
+          { "name": "Eggs", "quantity": "4" }
+        ],
+        "steps": [
+          {
+            "title": "Melt the chocolate",
+            "description": "Melt the chocolate **with the butter** over a water bath.\n\n- Keep the water at a simmer\n- Stir until glossy"
+          },
+          {
+            "title": "Fold in the eggs",
+            "description": "Let the mix cool for a minute first, or the eggs will scramble."
+          }
+        ]
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("recipeID", id);
+          console.log("recipeID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Create Recipe
+
+  Creates the recipe and both of its lists in one call.
+
+  ## Request body
+
+  | Field | Required | Notes |
+  |---|---|---|
+  | `name` | yes | 2–150 chars |
+  | `description` | no | max 250 chars |
+  | `estimated_minutes` | no | 0–100000, total time to conclusion |
+  | `favorite` | no | favorites sort first in every listing |
+  | `category_ids` | no | max 50, must all belong to this workspace |
+  | `ingredients` | no | max 200. `name` 1–100 chars, `quantity` max 50 |
+  | `steps` | no | max 200. `title` 1–250 chars, `description` max 10000 chars of markdown |
+
+  ## How it works
+
+  **Order comes from the arrays.** Neither list carries a `position` field —
+  each entry's rank is its index, assigned server-side. Send the steps in the
+  order they should be cooked.
+
+  **Blank rows are dropped, not stored.** An ingredient with an empty `name`, or
+  a step with an empty `title`, is skipped and the positions close up behind it.
+  That is what lets a form keep a trailing empty row without polluting the
+  recipe.
+
+  **Categories are borrowed by id, never created here.** Every id in
+  `category_ids` is resolved against this workspace first; an id that does not
+  resolve fails the whole request with `400` rather than being quietly dropped,
+  so a stale client cannot silently save a recipe with fewer labels than the
+  user picked. Duplicates within the array are collapsed.
+
+  `step.description` is markdown — the client authors it with tiptap. The server
+  stores the string verbatim and never parses it.
+
+  ## System impact
+
+  - Creates one `recipes` row, owned by the active workspace.
+  - Creates one `ingredients` row per non-blank ingredient.
+  - Creates one `steps` row per non-blank step.
+  - Creates one `recipe_categories` join row per resolved category.
+
+  Responds `201` with the **full** recipe, ingredients and steps included, each
+  carrying the id and `position` the server assigned.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | Malformed JSON; a whitespace-only name; a `category_ids` entry that does not exist in this workspace |
+  | `403` | No session, or the session has no active workspace |
+  | `422` | Field validation failed (`name` missing or out of range, an ingredient with no name, a step with no title, a field over its length cap, more than 200 entries in a list) |

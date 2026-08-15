@@ -1,0 +1,45 @@
+info:
+  name: Update Routine
+  type: http
+  seq: 4
+
+http:
+  method: PATCH
+  url: "{{server}}/routines/{{routineID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Drink Water",
+        "description": "Drink at least 3L of water",
+        "pinned": true,
+        "active": true,
+        "on_monday": true,
+        "on_tuesday": true,
+        "on_wednesday": true,
+        "on_thursday": true,
+        "on_friday": true,
+        "on_saturday": true,
+        "on_sunday": true
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("routineID", id);
+          console.log("routineID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

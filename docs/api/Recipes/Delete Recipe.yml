@@ -1,0 +1,52 @@
+info:
+  name: Delete Recipe
+  type: http
+  seq: 9
+
+http:
+  method: DELETE
+  url: "{{server}}/recipes/{{recipeID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Delete Recipe
+
+  Erases a recipe and everything it owns, permanently.
+
+  ## Archive first
+
+  **This only works on a recipe that is already archived.** Calling it on a live
+  recipe is a `400` with no side effect. The user has to archive, see the recipe
+  leave their listing, and then decide again — a destructive action should never
+  be one click away from a normal one.
+
+  ## What goes
+
+  Unlike every other delete in this API, this one is **hard**, not a soft
+  `deleted_at`:
+
+  - the `recipes` row;
+  - every `ingredients` row of the recipe;
+  - every `steps` row of the recipe, markdown included;
+  - every `recipe_categories` join row.
+
+  Nothing is recoverable afterwards. The **categories themselves survive** —
+  they belong to the workspace, and other recipes still use them.
+
+  ## System impact
+
+  One transaction: join rows, then ingredients, then steps, then the recipe.
+  Responds `204` with no body.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or the recipe is not archived yet |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |

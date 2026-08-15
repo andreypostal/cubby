@@ -1,0 +1,68 @@
+info:
+  name: Make Backup
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{server}}/backup"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Make Backup
+
+  Takes a fresh archive of the database and the search indexes, saves it in the
+  backup folder, and streams it back in the same response.
+
+  ## Requires a system admin
+
+  Every `/backup` and `/backups` endpoint is **system-admin scoped**, not
+  workspace scoped: one archive holds every workspace in the database. Promote a
+  user with `server setup promote-user -u <username>`.
+
+  ## How it works
+
+  A backup has to catch the database between writes, so the system is briefly
+  held still:
+
+  1. **Freeze** — in-flight requests are drained and new ones are held. The
+     caller's own request leaves the gate first, so it does not wait on itself.
+  2. **Pause** — the search indexers release their file handles.
+  3. **Archive** — the database and the index folders are zipped.
+  4. **Resume and unfreeze** — this happens *before* the download starts, so a
+     slow client on a bad connection does not keep the server frozen while it
+     reads.
+  5. **Prune** — archives past `backup_keep` (default 5) are removed, oldest
+     first.
+
+  Generating is capped at 180 seconds. If the system cannot be frozen in time
+  the answer is `409` and no archive was written.
+
+  ## Response
+
+  The zip itself, saved **and** streamed:
+
+  ```
+  Content-Type: application/zip
+  Content-Disposition: attachment; filename=cubby-backup-20260813-172846.397.zip
+  ```
+
+  The name is `cubby-backup-<YYYYMMDD>-<HHMMSS.mmm>.zip`, which is why archives
+  sort chronologically by plain string order. The saved copy stays in the backup
+  folder whether or not the download is completed, so a dropped connection never
+  costs the backup — `GET /backups` will list it.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `401` | No session |
+  | `403` | The user is not a system admin |
+  | `409` | The system could not be frozen in time — another backup or restore is in flight |
+  | `500` | The indexers could not be paused, or the archive could not be written |

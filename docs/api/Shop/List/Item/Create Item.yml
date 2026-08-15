@@ -1,0 +1,35 @@
+info:
+  name: Create Item
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{server}}/shop/lists/{{listID}}/items"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Whole milk"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("itemID", id);
+          console.log("itemID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

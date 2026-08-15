@@ -1,0 +1,48 @@
+info:
+  name: Get Board
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{server}}/tasks/board"
+  auth: inherit
+
+docs: |-
+  # Get Board
+
+  Returns the current workspace's task board: its id, its timezone, and what
+  "today" is according to that timezone.
+
+  ## How it works
+
+  A workspace has exactly **one** board, enforced by a unique index on
+  `workspace_id` rather than by application code. The board is **get-or-create**d
+  on first access, so there is no signup hook and no backfill migration: a
+  workspace that has never opened the task manager simply has no board row yet.
+
+  The `today` field is `time.Now()` resolved in the board's timezone and returned
+  as a date-only `YYYY-MM-DD`. Clients should use it instead of the browser's own
+  clock, otherwise near midnight the two will disagree about which day is
+  markable.
+
+  ## System impact
+
+  - **Creates a `TaskBoard`** the first time this workspace touches the module.
+    Every subsequent call returns the same row. Calling it twice is safe — a
+    concurrent double-create loses the insert at the database rather than
+    producing a second board.
+  - Nothing else is written.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `403` | No session, or the session has no active workspace |
+  | `500` | The board could not be read or created |
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

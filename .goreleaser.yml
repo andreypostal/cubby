@@ -1,0 +1,105 @@
+version: 2
+
+project_name: cubby
+
+before:
+  hooks:
+    - go mod download
+    - npm --prefix web ci
+    - npm --prefix web run build
+
+builds:
+  - id: cubby
+    main: ./server/cmd/server
+    binary: cubby
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+      - -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: cubby
+    ids:
+      - cubby
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - src: config.example.yaml
+        dst: config.yaml
+      - src: config.example.yaml
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\(.+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+  footer: |
+    ## Docker
+
+    ```
+    docker pull {{ envOrDefault "DOCKER_IMAGE" "cubby" }}:{{ .Version }}
+    ```
+
+    **Full changelog**: https://github.com/{{ envOrDefault "GITHUB_REPOSITORY" "andreypostal/cubby" }}/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+report_sizes: true

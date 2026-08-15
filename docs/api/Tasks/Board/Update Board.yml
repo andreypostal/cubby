@@ -1,0 +1,59 @@
+info:
+  name: Update Board
+  type: http
+  seq: 2
+
+http:
+  method: PATCH
+  url: "{{server}}/tasks/board"
+  body:
+    type: json
+    data: |-
+      {
+        "timezone": "America/Sao_Paulo"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Update Board
+
+  Sets the IANA timezone the board resolves "today" in.
+
+  ## How it works
+
+  The timezone decides **one thing only**: which calendar day is today. Stored
+  occurrence dates stay date-only midnight UTC and are never converted, so
+  changing this value can never shift an existing occurrence and no DST drift is
+  possible.
+
+  It does change behaviour that depends on today, all of it forward-looking:
+
+  - the default `starts_on` of a new task,
+  - the `ends_on` a stop writes,
+  - the default `from` of a resume,
+  - the `pending` / `future` split in day and range views,
+  - whether marking a given day is rejected as "future".
+
+  The value is checked against the IANA database twice — once by the request
+  validator and once in the service — because a bad value would break every
+  view.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create), then updates its `timezone` column.
+  - No task or entry is touched. Existing history is unaffected.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | Malformed JSON, or a timezone the IANA database does not know |
+  | `403` | No session, or the session has no active workspace |
+  | `422` | `timezone` missing or not a valid timezone name |

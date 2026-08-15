@@ -1,0 +1,93 @@
+info:
+  name: Workspace Recipes
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{server}}/recipes?search=cake&archived=exclude&page=1&per_page=12"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Workspace Recipes
+
+  The paginated listing. This is the only filtered read in the module.
+
+  ## Query parameters
+
+  | Param | Default | Notes |
+  |---|---|---|
+  | `search` | — | Matches **any part** of the name, case-insensitive |
+  | `category_id` | — | Repeatable, or one comma separated list. Matches recipes carrying **at least one** |
+  | `archived` | `exclude` | `exclude` \| `only` \| `include` |
+  | `favorite` | — | `true` narrows to favorites |
+  | `page` | `1` | 1-based |
+  | `per_page` | `12` | Capped at `60` |
+
+  ## How it works
+
+  `search` is a **contains**, not a prefix: the term is wrapped in wildcards on
+  both sides and both sides of the comparison are lowercased, so `cak` finds
+  `Chocolate Cake` whatever the column's collation says.
+
+  `category_id` is resolved with an `EXISTS` subquery rather than a join. A
+  recipe assigned to two of the selected categories would come back twice from a
+  join, which would corrupt both the page and the total.
+
+  **Favorites always sort first** — `favorite DESC, name ASC, id ASC` — no
+  matter which filters are active. The id is the final tiebreaker so two pages
+  of the same query can never repeat or skip a row.
+
+  The count and the page are built from the same `WHERE`, so `pagination.total`
+  can never describe a different set than `recipes`.
+
+  ## Response
+
+  Each entry is a **summary**: it carries its categories and the size of its two
+  lists, but not the lists themselves. Fetch the recipe to get those.
+
+  ```json
+  {
+    "recipes": [
+      {
+        "id": 3,
+        "name": "Chocolate Cake",
+        "description": "Dense, not too sweet",
+        "estimated_minutes": 90,
+        "favorite": true,
+        "archived": false,
+        "categories": [{ "id": 1, "name": "Desserts", "recipe_count": 0 }],
+        "ingredient_count": 8,
+        "step_count": 5,
+        "created_at": "2026-07-28T10:12:00Z",
+        "updated_at": "2026-07-28T10:12:00Z"
+      }
+    ],
+    "pagination": { "page": 1, "per_page": 12, "total": 1, "total_pages": 1 }
+  }
+  ```
+
+  `recipe_count` inside an embedded category is always `0` — it is a per-recipe
+  view of the label, not a workspace tally. Use `List Categories` for the real
+  number.
+
+  ## System impact
+
+  Read-only. Three queries: count, page, then one grouped count for the
+  ingredient and step totals — the lists are never loaded.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | `category_id` is not a number, or `archived` is not one of the three accepted values |
+  | `403` | No session, or the session has no active workspace |
+
+  Unreadable `page` / `per_page` values are treated as absent and fall back to
+  their defaults rather than failing the request.

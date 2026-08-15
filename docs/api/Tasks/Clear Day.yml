@@ -1,0 +1,51 @@
+info:
+  name: Clear Day
+  type: http
+  seq: 10
+
+http:
+  method: DELETE
+  url: "{{server}}/tasks/{{taskID}}/days/2026-01-30"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Clear Day
+
+  Removes a recorded outcome, sending the day back to `pending`.
+
+  ## How it works
+
+  Soft-deletes the `TaskEntry` for `(task_id, day)`. Because status is derived
+  from the presence of a row, removing it is all that "un-marking" means — the
+  day returns to `pending` in every view, and the response reports that status
+  back.
+
+  - **Idempotent.** Clearing a day that was never marked succeeds and reports
+    `pending`; there is nothing to report as missing.
+  - The soft-deleted row keeps the unique `(task_id, day)` slot, and `Mark Day`
+    revives it if the user marks that day again.
+
+  The same guards as `Mark Day` apply first: the day must not be in the future,
+  and it must be a real occurrence of the task inside its window. Clearing a day
+  the task never occurred on is a `400`, not a silent success — it signals a
+  client that is out of sync with the recurrence rule.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Soft-deletes at most one `TaskEntry`. Creates nothing.
+  - The `Task` row is not modified.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; the path date is not `YYYY-MM-DD`; the day is in the future; the day is not an occurrence of this task |
+  | `403` | No session; no active workspace; the task does not exist or belongs to another workspace |

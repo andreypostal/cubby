@@ -1,0 +1,69 @@
+info:
+  name: Reorder Steps
+  type: http
+  seq: 5
+
+http:
+  method: PATCH
+  url: "{{server}}/recipes/{{recipeID}}/steps/reorder"
+  body:
+    type: json
+    data: |-
+      {
+        "step_ids": {{reversedStepIDs}}
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Reorder Steps
+
+  Rewrites only the `position` of each step. Nothing else on the recipe is
+  touched.
+
+  ## When to use this instead of Update Recipe
+
+  `PATCH /recipes/:recipeID` already reorders — it rewrites both lists from the
+  array order. Use this endpoint when **only** the order changed: it avoids
+  resending the markdown body of every step, and it does not churn the step ids.
+
+  ## The payload must be complete
+
+  `step_ids` has to list **every** step of the recipe, exactly once. A partial
+  list is a `400`.
+
+  The check exists because positions are only meaningful relative to each other.
+  A client working from a stale copy — one that never saw a step added in
+  another tab — would send a shorter list and silently leave that step stranded
+  at whatever rank it happened to hold. Requiring the full set turns that into a
+  loud failure the client can recover from by refetching.
+
+  Positions are assigned from the array index, so the first id becomes
+  `position: 0`.
+
+  Because the ids belong to one specific recipe, the example body is filled from
+  `{{reversedStepIDs}}` — `Get Recipe` saves that variable, the recipe's own step
+  ids in reverse. Run `Get Recipe` first and this request flips the recipe end to
+  end; hardcoded ids would only ever match the one database they were copied
+  from.
+
+  ## System impact
+
+  One transaction, one `UPDATE` per step. An id that does not belong to this
+  recipe aborts the transaction, leaving every position as it was.
+
+  Responds `200` with the full recipe, steps in their new order. Step ids are
+  **unchanged** — unlike `Update Recipe`, this does not recreate the rows.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number; an id appears twice; the list does not cover every step of the recipe; an id belongs to another recipe |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |
+  | `422` | `step_ids` missing or empty, or more than 200 entries |

@@ -1,0 +1,52 @@
+info:
+  name: Delete Backup
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{server}}/backups/{{backupName}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Delete Backup
+
+  Removes one archive from the backup folder. Manual housekeeping, next to the
+  automatic pruning `POST /backup` already does through `backup_keep`.
+
+  ## Requires a system admin
+
+  System-admin scoped, like the rest of the backup family.
+
+  ## How it works
+
+  The file is unlinked from disk. There is no soft delete and no trash folder:
+  once it returns, the only copy of that archive is whatever was downloaded
+  earlier through `GET /backups/:name`.
+
+  Nothing live is affected — the running database is a different file. The
+  system is not frozen, so this is safe to call while serving traffic.
+
+  ## Name handling
+
+  `:name` is a bare filename, never a path. A separator, a `..`, or a name that
+  is not a backup archive is rejected with `400` before the disk is touched, so
+  this endpoint can only ever delete inside the backup folder.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The name is not a valid backup archive name |
+  | `401` | No session |
+  | `403` | The user is not a system admin |
+  | `404` | No archive by that name in the backup folder |
+  | `500` | The file exists but could not be removed |
+
+  Responds `204` with no body.

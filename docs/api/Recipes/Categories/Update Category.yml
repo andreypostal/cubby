@@ -1,0 +1,49 @@
+info:
+  name: Update Category
+  type: http
+  seq: 3
+
+http:
+  method: PATCH
+  url: "{{server}}/recipes/categories/{{categoryID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Sweets"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Update Category
+
+  Renames a category. There is nothing else on it to change.
+
+  ## How it works
+
+  Every recipe that carries the category follows the rename automatically —
+  the assignment is a join row pointing at the id, not a copy of the name.
+
+  The uniqueness check ignores the category being edited, so re-sending the same
+  name (or only changing its casing, `Desserts` to `desserts`) succeeds instead
+  of colliding with itself.
+
+  ## System impact
+
+  Updates one `categories` row. Responds `200` with the category, including its
+  current non-archived `recipe_count`.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, malformed JSON, or a whitespace-only name |
+  | `403` | No session; no active workspace; the category does not exist or belongs to another workspace |
+  | `409` | Another category in this workspace already uses that name |
+  | `422` | `name` missing, shorter than 2 or longer than 100 chars |

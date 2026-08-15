@@ -1,0 +1,50 @@
+info:
+  name: Get Task
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{server}}/tasks/{{taskID}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Get Task
+
+  Returns one task definition in full — including `instructions`, which the
+  listing endpoints also carry but which this endpoint is the natural place to
+  read — plus its whole stop/resume lineage.
+
+  ## How it works
+
+  The response has two parts:
+
+  - `task` — the requested task.
+  - `chain` — every task in the same stop/resume lineage, ordered by
+    `starts_on`, including the requested one.
+
+  A task that was never stopped and resumed has a `chain` of exactly itself.
+
+  The lineage is one query, not a recursive walk: `origin_task_id` always points
+  at the **root** of the chain rather than at the immediate parent, so
+  `WHERE id = root OR origin_task_id = root` collects the whole history however
+  many times the task was stopped and resumed.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create), because that is how ownership is checked. Read-only
+    otherwise.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number |
+  | `403` | No session; no active workspace; the task does not exist; or the task belongs to another workspace — the last two are deliberately indistinguishable so the API never confirms which ids are real |

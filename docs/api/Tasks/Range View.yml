@@ -1,0 +1,68 @@
+info:
+  name: Range View
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: "{{server}}/tasks/range?from=2026-01-01&to=2026-01-31"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Range View
+
+  The calendar endpoint: every day in `[from, to]`, each with the occurrences
+  that fall on it. This is what a month grid or an agenda list is built from.
+
+  ## Query parameters
+
+  | Param | Required | Notes |
+  |---|---|---|
+  | `from` | yes | `YYYY-MM-DD`, inclusive |
+  | `to` | yes | `YYYY-MM-DD`, inclusive, not before `from` |
+
+  The span is capped at **62 days**. That covers the two-month window a calendar
+  UI ever needs while keeping a single request's cost predictable, since the
+  view is assembled day by day in memory.
+
+  Days with no occurrences are still returned, with an empty `occurrences`
+  array, so a client can lay out a grid without filling gaps itself.
+
+  ## How it works
+
+  Two queries regardless of how many days the range spans:
+
+  1. the tasks whose window overlaps the range,
+  2. the entries recorded for those tasks inside it.
+
+  Then each day is walked and `Occurs(task, day)` decides membership. Statuses
+  follow the same rules as `Day View`: recorded outcome if there is one,
+  otherwise `pending` or `future` relative to today in the board's timezone.
+
+  ### Worth checking against a monthly task
+
+  For a task with `day_of_month: 31` and `business_day_strategy: previous`, this
+  request over January 2026 returns exactly **one** occurrence, on
+  **2026-01-30** — the 31st is a Saturday, so the shift pulls it back to Friday.
+  Over a full year the same task yields exactly 12 occurrences, one per month,
+  never spilling into a neighbouring one.
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - Read-only otherwise. No occurrence rows are generated or stored; a range in
+    2031 resolves as fast as one in the past and writes nothing.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | `from` or `to` missing or not `YYYY-MM-DD`; `to` before `from`; the span exceeds 62 days (the message reports the actual span) |
+  | `403` | No session, or the session has no active workspace |

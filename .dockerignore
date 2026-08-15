@@ -1,0 +1,61 @@
+# Keep the build context small and reproducible. Anything the image does not
+# need must be excluded here — web/node_modules alone is hundreds of megabytes
+# and would be shipped to the daemon on every build.
+
+# --- VCS & tooling ---
+.git
+.gitignore
+.crush.json
+.claude
+docs
+Makefile
+README.md
+LICENSE
+
+# --- Node ---
+**/node_modules
+
+# --- Local tooling ---
+# Not tracked, but a developer's checkout is what gets sent to the daemon.
+**/.agents
+**/.mcp.json
+**/skills-lock.json
+
+# --- Go build output ---
+bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+*.test
+*.prof
+vendor
+
+# The UI is rebuilt inside the image by the web-builder stage; a stale local
+# build must never leak into the binary.
+server/pkg/modules/web/dist
+
+# go.work makes the module build workspace-dependent. The image builds the
+# single module from go.mod, so it is deliberately left out.
+go.work
+go.work.sum
+
+# --- Runtime state & secrets ---
+# The container gets its config from docker/config.yaml plus CUBBY_* env vars.
+/config.yaml
+.env
+.env.local
+.env.*.local
+data
+backups
+certs
+tmp
+postgres_data
+pgadmin_data
+
+# --- Docker ---
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore

@@ -1,0 +1,285 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  web:
+    name: Web UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix web ci
+
+      - name: Lint
+        run: npm --prefix web run lint
+
+      - name: Type check
+        run: npm --prefix web run typecheck
+
+      - name: Build
+        run: npm --prefix web run build
+
+      - name: Upload the built UI
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: server/pkg/modules/web/dist
+          retention-days: 1
+          include-hidden-files: true
+
+  lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the built UI
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: server/pkg/modules/web/dist
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l ./server)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files:"
+            echo "$unformatted"
+            gofmt -d ./server
+            exit 1
+          fi
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          if ! git diff --quiet -- go.mod go.sum; then
+            echo "::error::go.mod or go.sum is out of date; run 'go mod tidy'"
+            git diff -- go.mod go.sum
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./server/...
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      - name: golangci-lint
+        id: golangci
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          golangci-lint run --timeout=5m ./server/... 2>&1 | tee lint.log
+
+      - name: Report the lint findings
+        if: always()
+        run: |
+          {
+            echo "### golangci-lint (advisory)"
+            echo
+            if [ "${{ steps.golangci.outcome }}" = "success" ]; then
+              echo "No findings."
+            else
+              echo '```'
+              cat lint.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the built UI
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: server/pkg/modules/web/dist
+
+      - name: Test
+        env:
+          # The race detector requires CGO
+          CGO_ENABLED: 1
+        run: go test -race -shuffle=on -covermode=atomic -coverprofile=coverage.out ./server/...
+
+      - name: Report coverage
+        run: |
+          go tool cover -func=coverage.out | tail -n 1
+          echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -n 20 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the coverage profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  system-test:
+    name: System tests
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the built UI
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: server/pkg/modules/web/dist
+
+      - name: Build the server
+        run: go build -o ./bin/cubby ./server/cmd/server
+
+      - name: Run the system tests
+        env:
+          CUBBY_SYSTEM_TEST_BINARY: ./bin/cubby
+        run: go test -tags system -count=1 -v -timeout 15m ./server/systemtest/...
+
+  vulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the built UI
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: server/pkg/modules/web/dist
+
+      - name: govulncheck
+        id: govulncheck
+        run: |
+          set -o pipefail
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./server/... 2>&1 | tee vuln.log
+
+      - name: Report the scan
+        if: always()
+        run: |
+          {
+            echo "### govulncheck"
+            echo
+            echo '```'
+            cat vuln.log 2>/dev/null || echo "the scan did not produce a report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: npm audit
+        run: npm --prefix web audit --audit-level=high
+        continue-on-error: true
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: cubby:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          set -euo pipefail
+
+          docker run --rm cubby:ci version
+
+          docker run -d --name cubby-smoke -p 18080:8080 cubby:ci
+          trap 'docker logs cubby-smoke || true; docker rm -f cubby-smoke >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18080/api/v1/setup/status >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "${ready:-0}" != "1" ]; then
+            echo "::error::the container never answered on /api/v1/setup/status"
+            exit 1
+          fi
+
+          curl -fsS http://127.0.0.1:18080/api/v1/setup/status | tee /dev/stderr | grep -q '"required":true'
+
+          # The image has to carry the UI too, which is the failure this whole
+          # pipeline was rebuilt around
+          curl -fsS http://127.0.0.1:18080/ | grep -q '<div id="root"'
+
+          echo "the image serves both the API and the UI"
+
+  # A single required check for branch protection
+  ci:
+    name: CI
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [web, lint, test, system-test, vulncheck, docker]
+    steps:
+      - name: Check the results
+        run: |
+          if echo '${{ join(needs.*.result, ' ') }}' | grep -qE 'failure|cancelled'; then
+            echo "::error::at least one job did not pass"
+            exit 1
+          fi
+          echo "all jobs passed"

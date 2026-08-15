@@ -1,0 +1,51 @@
+info:
+  name: List Categories
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{server}}/recipes/categories"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # List Categories
+
+  Every category the workspace has defined, ordered by name.
+
+  ## Response
+
+  ```json
+  {
+    "categories": [
+      {
+        "id": 1,
+        "name": "Desserts",
+        "recipe_count": 4,
+        "created_at": "2026-07-28T10:12:00Z"
+      }
+    ]
+  }
+  ```
+
+  `recipe_count` counts **non-archived** recipes only. A category used by three
+  recipes that have all been archived reports `0`, which is exactly how many
+  results filtering by it would bring back in the default listing.
+
+  ## System impact
+
+  Read-only. Two queries: the categories, then one grouped count over the join
+  table.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `403` | No session, or the session has no active workspace |
+  | `500` | The categories could not be read |

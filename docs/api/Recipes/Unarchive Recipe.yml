@@ -1,0 +1,47 @@
+info:
+  name: Unarchive Recipe
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{server}}/recipes/{{recipeID}}/unarchive"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Unarchive Recipe
+
+  Puts an archived recipe back into circulation.
+
+  ## How it works
+
+  Clears `archived_at`. The recipe returns to the default listing, sorted by its
+  own `favorite` flag and name as if it had never left, and starts counting
+  toward its categories' `recipe_count` again.
+
+  Nothing was lost while it was archived — ingredients, steps, categories and
+  the favorite flag all survive untouched, so this restores the exact recipe.
+
+  Unarchiving a recipe that is not archived is a `400`, which is how a client
+  learns its view is stale rather than reporting a success that changed nothing.
+
+  Once unarchived, the recipe can no longer be permanently deleted until it is
+  archived again.
+
+  ## System impact
+
+  Clears one timestamp column. Responds `200` with the full recipe, now carrying
+  `"archived": false`.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | The path id is not a number, or the recipe is not archived |
+  | `403` | No session; no active workspace; the recipe does not exist or belongs to another workspace |

@@ -1,0 +1,121 @@
+info:
+  name: Create Task
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{server}}/tasks"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Pay the invoice",
+        "icon": "receipt",
+        "description": "Company invoice for the month",
+        "instructions": "Open the bank app, use the saved payee, keep the receipt.",
+        "pinned": false,
+        "recurrence_type": "monthly",
+        "day_of_month": 31,
+        "business_day_strategy": "previous",
+        "starts_on": "2026-01-01"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("taskID", id);
+          console.log("taskID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Create Task
+
+  Creates a task definition. This is the **only** place a recurrence rule is
+  ever set — after creation it is immutable.
+
+  ## Request body
+
+  | Field | Required | Notes |
+  |---|---|---|
+  | `name` | yes | 3–100 chars |
+  | `icon` | yes | max 50 chars |
+  | `description` | no | max 250 chars |
+  | `instructions` | no | max 5000 chars, free text |
+  | `pinned` | no | sorts the task first in listings |
+  | `recurrence_type` | yes | `once` \| `daily` \| `weekly` \| `monthly` \| `annual` |
+  | `weekdays` | weekly only | `[1,3,5]`, 0 = Sunday .. 6 = Saturday |
+  | `day_of_month` | monthly and annual | 1–31 |
+  | `month_of_year` | annual only | 1 (January) – 12 (December) |
+  | `business_day_strategy` | no | `none` \| `previous` (default) \| `next` \| `closest` |
+  | `starts_on` | no | `YYYY-MM-DD`, defaults to today in the board's timezone |
+
+  Fields belonging to another recurrence type are **rejected**, not ignored — a
+  `daily` task carrying `weekdays` is a `400`. That keeps a stored row from ever
+  contradicting its own type.
+
+  ## How it works
+
+  The task is stored as a rule plus a window. Nothing else is generated: the
+  occurrences it implies are computed on demand by the day and range views.
+
+  - `starts_on` is inclusive and defaults to today **as the board sees it**, not
+    as the server clock sees it, so a task created late at night does not start
+    "yesterday".
+  - `ends_on` is left open (`null`), except for `once`, where it is set equal to
+    `starts_on`. That is what makes a `once` task structurally impossible to
+    stop or resume.
+  - For `monthly`, `day_of_month: 31` means "last day of the month": it is
+    clamped to the month's real length before the weekend shift is applied.
+  - `annual` is `monthly` pinned to one month: `month_of_year` picks the month,
+    and `day_of_month` resolves inside it under the exact same clamping and
+    weekend rules. `month_of_year: 2` with `day_of_month: 31` is therefore the
+    last day of February, leap year included.
+
+  ### What this example produces
+
+  The example pins `starts_on` to `2026-01-01` so the table below is exact — and
+  so `Day View`, `Range View`, `Mark Day` and `Clear Day`, which all point at
+  January 2026, land on a day this task really fires on. Drop `starts_on` and
+  the same rule simply begins today instead.
+
+  `day_of_month: 31` with `previous`, over 2026:
+
+  | Month | clamp | weekday | occurrence |
+  |---|---|---|---|
+  | Jan | Jan 31 | Sat | **Jan 30 (Fri)** |
+  | Feb | Feb 28 | Sat | **Feb 27 (Fri)** |
+  | Mar | Mar 31 | Tue | **Mar 31** |
+  | May | May 31 | Sun | **May 29 (Fri)** |
+
+  ## System impact
+
+  - **Creates the `TaskBoard`** if this workspace does not have one yet
+    (get-or-create).
+  - **Creates one `Task`** row, owned by that board.
+  - **Creates no `TaskEntry`** and no occurrence rows. Entries only appear when
+    the user marks a day.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | Malformed JSON; a weekly task with no weekdays or a duplicate weekday; a monthly or annual task whose `day_of_month` is not 1–31; an annual task whose `month_of_year` is not 1–12; `weekdays` sent for a non-weekly task; `day_of_month` sent for a task that is neither monthly nor annual; `month_of_year` sent for a non-annual task; unparseable `starts_on` |
+  | `403` | No session, or the session has no active workspace |
+  | `422` | Field validation failed (missing `name`/`icon`, unknown `recurrence_type`, unknown `business_day_strategy`, `starts_on` not `YYYY-MM-DD`, a weekday outside 0–6) |
+
+  Responds `201` with the created task.

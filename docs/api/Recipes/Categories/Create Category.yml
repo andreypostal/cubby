@@ -1,0 +1,68 @@
+info:
+  name: Create Category
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{server}}/recipes/categories"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Desserts"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const data = res.getBody();
+        const id = data.id;
+
+        if (id) {
+          bru.setVar("categoryID", id);
+          console.log("categoryID successfully saved to var");
+        } else {
+          console.error("ID not found in response body.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  # Create Category
+
+  Defines a new label for the workspace.
+
+  ## Request body
+
+  | Field | Required | Notes |
+  |---|---|---|
+  | `name` | yes | 2–100 chars, trimmed before saving |
+
+  ## How it works
+
+  The name is compared against the existing ones **case-insensitively**, so
+  `desserts` collides with an existing `Desserts` and is rejected with `409`
+  rather than creating a near-duplicate the user would have to untangle later.
+
+  Creating a category never touches a recipe. It starts with `recipe_count: 0`
+  and is assigned by sending its id in a recipe's `category_ids`.
+
+  ## System impact
+
+  Creates one `categories` row. Responds `201` with the category.
+
+  ## Errors
+
+  | Status | When |
+  |---|---|
+  | `400` | Malformed JSON, or a name that is only whitespace |
+  | `403` | No session, or the session has no active workspace |
+  | `409` | A category with that name already exists in this workspace |
+  | `422` | `name` missing, shorter than 2 or longer than 100 chars |
