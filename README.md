@@ -76,7 +76,7 @@ make build
 
 ### From Docker Hub
 
-Every release publishes a multi-arch image to [andreypostal/cubby](https://hub.docker.com/r/andreypostal/cubby):
+Every release publishes a multi-arch image to [andreypostal/cubby](https://hub.docker.com/r/andreypostal/cubby)
 
 ```bash
 docker pull andreypostal/cubby:{tag}
