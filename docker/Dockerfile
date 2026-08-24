@@ -15,7 +15,7 @@ RUN npm --prefix web run build
 # ---------------------------------------------------------------------------
 # Compile the server
 # ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server-builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server-builder
 
 WORKDIR /src
 
